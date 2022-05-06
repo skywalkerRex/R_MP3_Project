@@ -14,9 +14,11 @@
 #include "stdio.h"
 
 #define mp3_debugging_mode 1
+#define mp3_debug_prt 0
 
 static song_memory_t list_of_songs[99];
 static size_t number_of_songs;
+static SemaphoreHandle_t mp3_bus_mutex;
 
 #if 1
 static gpio_s XCS = {2, 0};
@@ -42,24 +44,43 @@ void pin_ds(gpio_s pin_ds) {
   gpio__set(pin_ds);
 }
 
+static void SDI_send(uint8_t data) {
+  if (xSemaphoreTake(mp3_bus_mutex, portMAX_DELAY)) {
+    pin_ds(XCS);
+    while (!DREQ_Wait()) {
+      vTaskDelay(1);
+    }
+    pin_cs(XDCS);
+    ssp0__exchange_byte(data);
+    pin_ds(XDCS);
+    xSemaphoreGive(mp3_bus_mutex);
+  }
+}
+
 void ssp0_mp3_write_single(uint8_t addr, uint8_t data1, uint8_t data2) {
-  pin_ds(XDCS);
-  pin_cs(XCS);
-  ssp0__exchange_byte(VS_WRITE_COMMAND);
-  ssp0__exchange_byte(addr);
-  ssp0__exchange_byte(data1);
-  ssp0__exchange_byte(data2);
-  pin_ds(XCS);
+  if (xSemaphoreTake(mp3_bus_mutex, 1000)) {
+    pin_ds(XDCS);
+    pin_cs(XCS);
+    ssp0__exchange_byte(VS_WRITE_COMMAND);
+    ssp0__exchange_byte(addr);
+    ssp0__exchange_byte(data1);
+    ssp0__exchange_byte(data2);
+    pin_ds(XCS);
+    xSemaphoreGive(mp3_bus_mutex);
+  }
 }
 
 void ssp0_mp3_read_single(uint8_t addr, uint8_t *data1, uint8_t *data2) {
-  pin_ds(XDCS);
-  pin_cs(XCS);
-  ssp0__exchange_byte(VS_READ_COMMAND);
-  ssp0__exchange_byte(addr);
-  *data1 = ssp0__exchange_byte(0xFF);
-  *data2 = ssp0__exchange_byte(0xFF);
-  pin_ds(XCS);
+  if (xSemaphoreTake(mp3_bus_mutex, 1000)) {
+    pin_ds(XDCS);
+    pin_cs(XCS);
+    ssp0__exchange_byte(VS_READ_COMMAND);
+    ssp0__exchange_byte(addr);
+    *data1 = ssp0__exchange_byte(0xFF);
+    *data2 = ssp0__exchange_byte(0xFF);
+    pin_ds(XCS);
+    xSemaphoreGive(mp3_bus_mutex);
+  }
 }
 
 static void song_list__handle_filename(const char *filename) {
@@ -181,6 +202,7 @@ void mp3_setStreamMode() {
 
 void mp3_init(void) {
   song_list__populate();
+  mp3_bus_mutex = xSemaphoreCreateMutex();
 
   current_machine_state.playing = false;
   current_machine_state.index = 0;
@@ -292,13 +314,11 @@ This is for MP3 Decoder
 
 void mp3_Send_to_Decoder(uint8_t *buff) {
 
-  pin_ds(XCS);
   for (int i = 0; i < 512; i++) {
-    while (!DREQ_Wait()) {
-    }
-    pin_cs(XDCS);
-    ssp0__exchange_byte(buff);
-    pin_ds(XDCS);
+    SDI_send(buff[i]);
+#if mp3_debug_prt
+    fprintf(stderr, "Decoder send: 0x%02X\n", buff[i]);
+#endif
   }
 }
 

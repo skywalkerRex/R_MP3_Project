@@ -1,11 +1,11 @@
-#include <stdbool.h>
-#include <stddef.h>
-
 #include "ssp0_mp3.h"
-
+#include "FreeRTOS.h"
 #include "clock.h"
 #include "lpc40xx.h"
 #include "lpc_peripherals.h"
+#include "semphr.h"
+#include <stdbool.h>
+#include <stddef.h>
 
 void gpio_set_spi_func(uint32_t *pointer) {
   *pointer &= ~0b111;

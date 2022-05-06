@@ -2,11 +2,13 @@
 #include "FreeRTOS.h"
 #include "R_LCD.h"
 #include "R_MP3.h"
-#include "adc.h"
+#include "l3_drivers/adc.h"
 #include "l3_drivers/gpio.h"
 #include "semphr.h"
 #include <stdio.h>
 #include <string.h>
+
+#define ctrl_debug_prt 1
 
 static void welcome_page();
 static void play_page();
@@ -313,18 +315,30 @@ void key_board(void *p) {
       if (gpio__get(Butt_list[Butt_UP]) && !selected) {
         // UP
         select = Menu_page(--select);
+#if ctrl_debug_prt
+        fprintf(stderr, "Select: %i \n", select);
+#endif
       }
       if (gpio__get(Butt_list[Butt_DOWN]) && !selected) {
         // DOWN
         select = Menu_page(++select);
+#if ctrl_debug_prt
+        fprintf(stderr, "Select: %i \n", select);
+#endif
       }
       if (gpio__get(Butt_list[Butt_LEFT]) && selected) {
         // LEFT
         menu_mod(select, false);
+#if ctrl_debug_prt
+        fprintf(stderr, "Select: %i \n", select);
+#endif
       }
       if (gpio__get(Butt_list[Butt_RIGHT]) && selected) {
         // RIGHT
         menu_mod(select, true);
+#if ctrl_debug_prt
+        fprintf(stderr, "Select: %i \n", select);
+#endif
       }
       if (gpio__get(Butt_list[Butt_PLAY])) {
         // Confirm
@@ -344,6 +358,7 @@ void key_board(void *p) {
       if (gpio__get(Butt_list[Butt_SONG])) {
         // xQueueSend(Butt_Queues[Butt_SONG], &pressed, 0);
         SW_to_Select();
+        selected = false;
         current_machine_state.in_Menu = false;
         current_machine_state.in_Song_list = true;
         select = Song_list_page(current_machine_state.index);
