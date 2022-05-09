@@ -52,6 +52,14 @@ static void welcome_page() {
   clear();
   setCursor(0, 5);
   LCD_printf("Rex's MP3", 9);
+#if ctrl_debug_prt
+  Flash_Write(Save_Bass, 0x09);
+  Flash_Write(Save_Treble, 0x01);
+  setCursor(1, 0);
+  LCD_hex_print(Flash_Read(Save_Bass));
+  setCursor(1, 10);
+  LCD_hex_print(Flash_Read(Save_Treble));
+#endif
   Line2_Play_line();
 }
 
@@ -212,7 +220,7 @@ static void menu_mod(int select, bool add) {
       Temp = (Bass)&0x0F;
       if (add && Temp < 0x0F) {
         Temp++;
-      } else if (!add && Temp > 1) {
+      } else if (!add && Temp > 2) {
         Temp--;
       }
       Bass = (Bass & 0xF0) | (Temp);
@@ -220,6 +228,8 @@ static void menu_mod(int select, bool add) {
       LCD_num_R_print(Temp, 3);
     }
     ssp0_mp3_write_single(SPI_BASS, Treble, Bass);
+    Flash_Write(Save_Bass, Bass);
+    Flash_Write(Save_Treble, Treble);
   }
 }
 
@@ -230,7 +240,7 @@ static int Song_list_page(int select) {
     select = current_machine_state.total - 1;
   }
   clear();
-  SW_to_Selected();
+  SW_to_Select();
   setCursor(0, 5);
   LCD_printf("Song List", 9);
   if (select == 0) {

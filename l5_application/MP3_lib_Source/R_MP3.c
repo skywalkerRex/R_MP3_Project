@@ -5,15 +5,18 @@
 #include <string.h>
 
 // Custom Lib
+#include "board_io.h"
 #include "delay.h"
 #include "ff.h"
 #include "l3_drivers/gpio.h"
 #include "lpc40xx.h"
 #include "semphr.h"
 #include "ssp0_mp3.h"
+#include "ssp2.h"
+#include "ssp2_mutex.h"
 #include "stdio.h"
 
-#define mp3_debugging_mode 1
+#define mp3_debugging_mode 0
 #define mp3_debug_prt 0
 
 static song_memory_t list_of_songs[99];
@@ -25,13 +28,7 @@ static gpio_s XCS = {2, 0};
 static gpio_s XDCS = {2, 1};
 static gpio_s DREQ = {2, 2};
 static gpio_s XRESET = {2, 4};
-#endif
-
-#if 0
-static gpio_s XCS = {2, 0};
-static gpio_s XDCS = {2, 1};
-static gpio_s DREQ = {2, 5};
-static gpio_s XRESET = {2, 2};
+static gpio_s Flash_CS = {1, 10};
 #endif
 
 void pin_cs(gpio_s pin_cs) {
@@ -42,6 +39,73 @@ void pin_cs(gpio_s pin_cs) {
 void pin_ds(gpio_s pin_ds) {
   gpio__set_as_output(pin_ds);
   gpio__set(pin_ds);
+}
+
+uint8_t Flash_Read(uint32_t addr) {
+  uint8_t temp;
+  spi2_mutex__acquire();
+  pin_cs(Flash_CS);
+  ssp2__exchange_byte(VS_READ_COMMAND);
+  temp = addr & 0xFF;
+  ssp2__exchange_byte(temp);
+  temp = (addr >> 8) & 0xFF;
+  ssp2__exchange_byte(temp);
+  temp = (addr >> 16) & 0xFF;
+  ssp2__exchange_byte(temp);
+  temp = ssp2__exchange_byte(0xFF);
+  pin_ds(Flash_CS);
+  spi2_mutex__release();
+  return temp;
+}
+
+void Flash_Write(uint32_t addr, uint8_t data) {
+  uint8_t temp;
+  spi2_mutex__acquire();
+  pin_cs(Flash_CS);
+  ssp2__exchange_byte(VS_WRITE_COMMAND);
+  temp = addr & 0xFF;
+  ssp2__exchange_byte(temp);
+  temp = (addr >> 8) & 0xFF;
+  ssp2__exchange_byte(temp);
+  temp = (addr >> 16) & 0xFF;
+  ssp2__exchange_byte(temp);
+  ssp2__exchange_byte(data);
+  pin_ds(Flash_CS);
+  spi2_mutex__release();
+}
+
+uint8_t Flash_Write_Status() {
+  uint8_t temp;
+  spi2_mutex__acquire();
+  pin_cs(Flash_CS);
+  ssp2__exchange_byte(0x9f);
+  ssp2__exchange_byte(0x00);
+  temp = ssp2__exchange_byte(0x00);
+  ssp2__exchange_byte(0x00);
+  pin_ds(Flash_CS);
+  spi2_mutex__release();
+  return temp;
+}
+
+uint8_t Flash_Read_ID() {
+  uint8_t temp;
+  spi2_mutex__acquire();
+  pin_cs(Flash_CS);
+  ssp2__exchange_byte(0x9f);
+  ssp2__exchange_byte(0x00);
+  temp = ssp2__exchange_byte(0x00);
+  ssp2__exchange_byte(0x00);
+  pin_ds(Flash_CS);
+  spi2_mutex__release();
+  return temp;
+}
+
+static void Enable_Flash() {
+  spi2_mutex__acquire();
+  pin_cs(Flash_CS);
+  ssp2__exchange_byte(0x06);
+  pin_ds(Flash_CS);
+  spi2_mutex__release();
 }
 
 static void SDI_send(uint8_t data) {
@@ -165,7 +229,9 @@ void mp3_SoftReset() {
   ssp0_mp3_write_single(SPI_MODE, 0x48, 0x00);
   ssp0_mp3_write_single(SPI_CLOCKF, 0x60, 0x00);
   ssp0_mp3_write_single(SPI_AUDATA, 0xBB, 0x81);
-  ssp0_mp3_write_single(SPI_BASS, 0x00, 0x55);
+  ssp0_mp3_write_single(SPI_BASS, 0x01, 0x08);
+  Flash_Write(Save_Bass, 0x08);
+  Flash_Write(Save_Treble, 0x01);
   mp3_set_Vol(0x20);
   delay__ms(1);
   pin_cs(XDCS);
@@ -200,6 +266,11 @@ void mp3_setStreamMode() {
   ssp0_mp3_write_single(0x00, data[0], data[1]);
 }
 
+void Turnoff_light(gpio_s LED) {
+  gpio__set_as_output(LED);
+  gpio__set(LED);
+}
+
 void mp3_init(void) {
   song_list__populate();
   mp3_bus_mutex = xSemaphoreCreateMutex();
@@ -209,23 +280,34 @@ void mp3_init(void) {
   current_machine_state.states = Welcome_STATUS;
   current_machine_state.in_Menu = false;
   current_machine_state.in_Song_list = false;
+  current_machine_state.play_mode = List_Loop;
+
   current_machine_state.total = song_list__get_item_count();
+
+  // Turn off on board LED
+  Turnoff_light(board_io__get_led0());
+  Turnoff_light(board_io__get_led1());
+  Turnoff_light(board_io__get_led2());
+  Turnoff_light(board_io__get_led3());
 
   printf("\nSong list in SD Card root:\n");
   for (size_t song_number = 0; song_number < current_machine_state.total; song_number++) {
     printf("Song %2d: %s\n", (1 + song_number), song_list__get_name_for_item(song_number));
   }
+
   printf("\n");
   ssp0__initialize(1);
   ssp0__pin_init();
-  mp3_Reset();
+  Enable_Flash();
+
+  // mp3_Reset();
   ssp0__exchange_byte(0x00);
   mp3_set_Vol(0x20);
   ssp0_mp3_write_single(SPI_MODE, 0x48, 0x00);
   ssp0_mp3_write_single(SPI_CLOCKF, 0x60, 0x00); // Set Clock
   ssp0_mp3_write_single(SPI_AUDATA, 0xBB, 0x81); // Set Frequcy
   ssp0_mp3_write_single(SPI_BASS, 0x01, 0x08);   // Set Bass and Treble
-
+  // ssp0_mp3_write_single(SPI_BASS, Flash_Read(Save_Treble), Flash_Read(Save_Bass)); // Set Bass and Treble
 #if mp3_debugging_mode
   uint8_t data[2];
   printf("MP3 Decoder Reg: \n");

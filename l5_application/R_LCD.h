@@ -47,6 +47,7 @@ void print_cus_ch_at(uint8_t cus[8], uint8_t row, uint8_t col);
 void LCD_printf(char *ch_str, int size);
 void createChar(uint8_t location, uint8_t charmap[]);
 void Space_Printf(int num);
+void LCD_hex_print(uint8_t num);
 void LCD_num_print(int num);
 void LCD_num_R_print(int num, int fixed_space);
 void LCD_S_name_printf(char *s_name);

@@ -295,6 +295,12 @@ void LCD_num_print(int num) {
   }
 }
 
+void LCD_hex_print(uint8_t num) {
+  char str_int[5];
+  sprintf(str_int, "0x%02X", num);
+  LCD_printf(str_int, 4);
+}
+
 void LCD_num_R_print(int num, int fixed_space) {
   char str_int[12];
   int neg = 0;

@@ -45,7 +45,7 @@ int main(void) {
   }
   xTaskCreate(mp3_Song_From_Queue, "MP3_Song", (512U * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
   xTaskCreate(mp3_Play_Data_Get, "MP3_Play", (512U * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
-  xTaskCreate(key_board, "Key_Board", (512U * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(key_board, "Key_Board", (512U * 4) / sizeof(void *), NULL, PRIORITY_HIGH, NULL);
   vTaskStartScheduler(); // Run RTOS
   return 0;
 }

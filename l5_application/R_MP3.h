@@ -80,6 +80,10 @@ typedef struct machine_states {
 #define Stop_STATUS 2
 #define Pause_STATUS 3
 
+// Address
+#define Save_Bass 0x079005
+#define Save_Treble 0x079006
+
 machine_states current_machine_state;
 
 void mp3_init(void);                     // init all thing that mp3 related
@@ -97,3 +101,6 @@ void mp3_SoftReset();
 void mp3_setStreamMode();
 bool DREQ_Wait();
 void mp3_set_Vol(uint8_t Vol);
+void Flash_Write(uint32_t addr, uint8_t data);
+uint8_t Flash_Read(uint32_t addr);
+uint8_t Flash_Read_ID();
