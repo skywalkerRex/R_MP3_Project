@@ -72,6 +72,8 @@ uint8_t LLoop_Symbol[8] = {0x00, 0x0F, 0x10, 0x10, 0x10, 0x12, 0x0F, 0x02};
 uint8_t RLoop_Symbol[8] = {0x08, 0x1E, 0x09, 0x01, 0x01, 0x01, 0x1E, 0x00};
 uint8_t Select_Symbol[8] = {0x00, 0x0E, 0x1F, 0x1F, 0x1F, 0x0E, 0x00, 0x00};
 uint8_t Selected_Symbol[8] = {0x00, 0x00, 0x01, 0x03, 0x16, 0x1C, 0x08, 0x00};
+uint8_t LRand_Symbol[8] = {0x1F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x00};
+uint8_t RRand_Symbol[8] = {0x1A, 0x06, 0x0E, 0x00, 0x0E, 0x06, 0x1A, 0x00};
 
 void expanderWrite(uint8_t _data) { i2c__write_no_addr(i2c_line, _Addr, (_data) | _backlightval); }
 
@@ -108,13 +110,13 @@ void LCD_init(uint8_t addr) {
   write4bits(0x03 << 4);
   delay__ms(5); // wait min 4.1ms
 
-  // second try
+  // // second try
   write4bits(0x03 << 4);
   delay__ms(5); // wait min 4.1ms
 
-  // third go!
-  write4bits(0x03 << 4);
-  delay__ms(1);
+  // // third go!
+  // write4bits(0x03 << 4);
+  // delay__ms(1);
 
   // finally, set to 4-bit interface
   write4bits(0x02 << 4);
@@ -144,24 +146,23 @@ void LCD_init(uint8_t addr) {
 }
 
 void clear() {
-  command(LCD_CLEARDISPLAY); // clear display, set cursor position to zero
-  delay__ms(2);              // this command takes a long time!
+  command(LCD_CLEARDISPLAY);
+  delay__ms(2);
 }
 
 void home() {
-  command(LCD_RETURNHOME); // set cursor position to zero
-  delay__ms(2);            // this command takes a long time!
+  command(LCD_RETURNHOME);
+  delay__ms(2);
 }
 
 void setCursor(uint8_t row, uint8_t col) {
   int row_offsets[] = {0x00, 0x40, 0x14, 0x54};
   if (row > _numlines) {
-    row = _numlines - 1; // we count rows starting w/0
+    row = _numlines - 1;
   }
   command(LCD_SETDDRAMADDR | (col + row_offsets[row]));
 }
 
-// Turn the display on/off (quickly)
 void noDisplay() {
   _displaycontrol &= ~LCD_DISPLAYON;
   command(LCD_DISPLAYCONTROL | _displaycontrol);
@@ -171,55 +172,6 @@ void display() {
   command(LCD_DISPLAYCONTROL | _displaycontrol);
 }
 
-// Turns the underline cursor on/off
-void noCursor() {
-  _displaycontrol &= ~LCD_CURSORON;
-  command(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-void cursor() {
-  _displaycontrol |= LCD_CURSORON;
-  command(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-
-// Turn on and off the blinking cursor
-void noBlink() {
-  _displaycontrol &= ~LCD_BLINKON;
-  command(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-void blink() {
-  _displaycontrol |= LCD_BLINKON;
-  command(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-
-// These commands scroll the display without changing the RAM
-void scrollDisplayLeft() { command(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVELEFT); }
-void scrollDisplayRight() { command(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVERIGHT); }
-
-// This is for text that flows Left to Right
-void leftToRight() {
-  _displaymode |= LCD_ENTRYLEFT;
-  command(LCD_ENTRYMODESET | _displaymode);
-}
-
-// This is for text that flows Right to Left
-void rightToLeft() {
-  _displaymode &= ~LCD_ENTRYLEFT;
-  command(LCD_ENTRYMODESET | _displaymode);
-}
-
-// This will 'right justify' text from the cursor
-void autoscroll() {
-  _displaymode |= LCD_ENTRYSHIFTINCREMENT;
-  command(LCD_ENTRYMODESET | _displaymode);
-}
-
-// This will 'left justify' text from the cursor
-void noAutoscroll() {
-  _displaymode &= ~LCD_ENTRYSHIFTINCREMENT;
-  command(LCD_ENTRYMODESET | _displaymode);
-}
-
-// Turn the (optional) backlight off/on
 void noBacklight(void) {
   _backlightval = LCD_NOBACKLIGHT;
   expanderWrite(0);
@@ -274,6 +226,16 @@ void SW_to_STOP() { createChar(STOP_SYM, STOP_Symbol); }
 void SW_to_Select() { createChar(Select_SYM, Select_Symbol); }
 
 void SW_to_Selected() { createChar(Select_SYM, Selected_Symbol); }
+
+void SW_to_Loop() {
+  createChar(LLoop_SYM, LLoop_Symbol);
+  createChar(RLoop_SYM, RLoop_Symbol);
+}
+
+void SW_to_Rand() {
+  createChar(LLoop_SYM, LRand_Symbol);
+  createChar(RLoop_SYM, RRand_Symbol);
+}
 
 void Space_Printf(int num) {
   for (int i = 0; i < num; i++) {

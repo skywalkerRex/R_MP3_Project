@@ -19,13 +19,15 @@ const char *song_list__get_name_for_item(size_t item_number);
 bool song_list_find_by_name(char *s_name, char *Song);
 
 // Function for playing the song
-typedef uint8_t mp3_data_blocks_s[512]; // Align data size to the way data is read from the SD card
+#define Size_Data_Block 512
+typedef uint8_t mp3_data_blocks_s[Size_Data_Block]; // Align data size to the way data is read from the SD card
 QueueHandle_t Butt_Queues[7];
 
 typedef struct machine_states {
   bool playing;
   // bool stop;
   int index;
+  int prev_song;
   bool in_Menu;
   bool in_Song_list;
   int play_mode;
@@ -73,6 +75,7 @@ typedef struct machine_states {
 #define Single_Play 0
 #define Single_Loop 1
 #define List_Loop 2
+#define Random_Play 3
 
 // states Define
 #define Welcome_STATUS 0
@@ -81,8 +84,8 @@ typedef struct machine_states {
 #define Pause_STATUS 3
 
 // Address
-#define Save_Bass 0x079005
-#define Save_Treble 0x079006
+#define Save_Bass 0x00000000
+#define Save_Treble 0x00000001
 
 machine_states current_machine_state;
 
@@ -103,4 +106,7 @@ bool DREQ_Wait();
 void mp3_set_Vol(uint8_t Vol);
 void Flash_Write(uint32_t addr, uint8_t data);
 uint8_t Flash_Read(uint32_t addr);
+void Flash_Erase(uint32_t addr);
 uint8_t Flash_Read_ID();
+uint8_t Flash_Write_Status();
+void Save_BT(uint8_t Treble_t, uint8_t Bass_t);

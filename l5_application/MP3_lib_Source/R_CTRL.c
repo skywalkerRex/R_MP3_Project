@@ -6,9 +6,10 @@
 #include "l3_drivers/gpio.h"
 #include "semphr.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#define ctrl_debug_prt 1
+#define ctrl_debug_prt 0
 
 static void welcome_page();
 static void play_page();
@@ -37,13 +38,21 @@ static void Line2_Play_line() {
   print_ch_at(Next_SYM, 2, 12);
   print_ch_at(Prev_SYM, 2, 6);
   print_ch_at(LLoop_SYM, 2, 0);
-  if (current_machine_state.play_mode == 2) {
-    print_ch_at(' ', 2, 1);
-  } else if (current_machine_state.play_mode == 1) {
-    print_ch_at('1', 2, 1);
+
+  if (current_machine_state.play_mode == Random_Play) {
+    SW_to_Rand();
+    print_ch_at('X', 2, 1);
   } else {
-    print_ch_at('/', 2, 1);
+    SW_to_Loop();
+    if (current_machine_state.play_mode == List_Loop) {
+      print_ch_at(' ', 2, 1);
+    } else if (current_machine_state.play_mode == Single_Loop) {
+      print_ch_at('1', 2, 1);
+    } else {
+      print_ch_at('/', 2, 1);
+    }
   }
+
   print_ch_at(RLoop_SYM, 2, 2);
 }
 
@@ -53,12 +62,15 @@ static void welcome_page() {
   setCursor(0, 5);
   LCD_printf("Rex's MP3", 9);
 #if ctrl_debug_prt
-  Flash_Write(Save_Bass, 0x09);
-  Flash_Write(Save_Treble, 0x01);
+  Save_BT(0x01, 0x08);
   setCursor(1, 0);
   LCD_hex_print(Flash_Read(Save_Bass));
-  setCursor(1, 10);
+  setCursor(1, 5);
   LCD_hex_print(Flash_Read(Save_Treble));
+  setCursor(1, 10);
+  LCD_hex_print(Flash_Write_Status());
+  setCursor(1, 15);
+  LCD_hex_print(Flash_Read_ID());
 #endif
   Line2_Play_line();
 }
@@ -228,8 +240,9 @@ static void menu_mod(int select, bool add) {
       LCD_num_R_print(Temp, 3);
     }
     ssp0_mp3_write_single(SPI_BASS, Treble, Bass);
-    Flash_Write(Save_Bass, Bass);
-    Flash_Write(Save_Treble, Treble);
+    Save_BT(Treble, Bass);
+    // Flash_Write(Save_Bass, Bass);
+    // Flash_Write(Save_Treble, Treble);
   }
 }
 
@@ -269,12 +282,19 @@ static int Song_list_page(int select) {
 static void Play_Current() { mp3_Song_to_Queue((char *)song_list__get_name_for_item(current_machine_state.index)); }
 
 static void Play_Next() {
-  if (current_machine_state.index < (current_machine_state.total - 1)) {
-    current_machine_state.index++;
+  current_machine_state.prev_song = current_machine_state.index;
+  if (current_machine_state.play_mode == Random_Play) {
+    srand(xTaskGetTickCount());
+    current_machine_state.index = rand() % current_machine_state.total;
+    mp3_Song_to_Queue((char *)song_list__get_name_for_item(current_machine_state.index));
   } else {
-    current_machine_state.index = 0;
+    if (current_machine_state.index < (current_machine_state.total - 1)) {
+      current_machine_state.index++;
+    } else {
+      current_machine_state.index = 0;
+    }
+    mp3_Song_to_Queue((char *)song_list__get_name_for_item(current_machine_state.index));
   }
-  mp3_Song_to_Queue((char *)song_list__get_name_for_item(current_machine_state.index));
 }
 
 static void Play_Prev() {
@@ -419,6 +439,11 @@ void key_board(void *p) {
           break;
 
         case 2:
+          current_machine_state.play_mode = 3;
+          Line2_Play_line();
+          break;
+
+        case 3:
           current_machine_state.play_mode = 0;
           Line2_Play_line();
           break;
@@ -493,11 +518,14 @@ void key_board(void *p) {
         Line3_Vol_line(vol_int);
       }
     }
+
     // PlayMode Handle
     if (current_machine_state.states == Play_STATUS && (!current_machine_state.playing)) {
       if (current_machine_state.play_mode == Single_Loop) {
         Play_Current();
       } else if (current_machine_state.play_mode == List_Loop) {
+        Play_Next();
+      } else if (current_machine_state.play_mode == Random_Play) {
         Play_Next();
       } else {
         SW_to_STOP();

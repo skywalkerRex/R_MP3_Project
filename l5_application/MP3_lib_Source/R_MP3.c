@@ -41,47 +41,73 @@ void pin_ds(gpio_s pin_ds) {
   gpio__set(pin_ds);
 }
 
+static void Enable_Flash() {
+  pin_cs(Flash_CS);
+  ssp2__exchange_byte(0x06);
+  pin_ds(Flash_CS);
+}
+
+static void Disable_Flash() {
+  pin_cs(Flash_CS);
+  ssp2__exchange_byte(0x04);
+  pin_ds(Flash_CS);
+}
+
 uint8_t Flash_Read(uint32_t addr) {
   uint8_t temp;
   spi2_mutex__acquire();
   pin_cs(Flash_CS);
   ssp2__exchange_byte(VS_READ_COMMAND);
-  temp = addr & 0xFF;
-  ssp2__exchange_byte(temp);
-  temp = (addr >> 8) & 0xFF;
-  ssp2__exchange_byte(temp);
-  temp = (addr >> 16) & 0xFF;
-  ssp2__exchange_byte(temp);
+  ssp2__exchange_byte((addr >> 16) & 0xFF);
+  ssp2__exchange_byte((addr >> 8) & 0xFF);
+  ssp2__exchange_byte(addr & 0xFF);
   temp = ssp2__exchange_byte(0xFF);
   pin_ds(Flash_CS);
   spi2_mutex__release();
   return temp;
 }
 
-void Flash_Write(uint32_t addr, uint8_t data) {
-  uint8_t temp;
+void Flash_Erase(uint32_t addr) {
   spi2_mutex__acquire();
+  Enable_Flash();
+  pin_cs(Flash_CS);
+  ssp2__exchange_byte(0x20);
+  ssp2__exchange_byte((addr >> 16) & 0xFF);
+  ssp2__exchange_byte((addr >> 8) & 0xFF);
+  ssp2__exchange_byte(addr & 0xFF);
+  pin_ds(Flash_CS);
+  Disable_Flash();
+  spi2_mutex__release();
+  delay__ms(50);
+}
+
+void Flash_Write(uint32_t addr, uint8_t data) {
+  spi2_mutex__acquire();
+  Enable_Flash();
   pin_cs(Flash_CS);
   ssp2__exchange_byte(VS_WRITE_COMMAND);
-  temp = addr & 0xFF;
-  ssp2__exchange_byte(temp);
-  temp = (addr >> 8) & 0xFF;
-  ssp2__exchange_byte(temp);
-  temp = (addr >> 16) & 0xFF;
-  ssp2__exchange_byte(temp);
+  ssp2__exchange_byte((addr >> 16) & 0xFF);
+  ssp2__exchange_byte((addr >> 8) & 0xFF);
+  ssp2__exchange_byte(addr & 0xFF);
   ssp2__exchange_byte(data);
   pin_ds(Flash_CS);
+  Disable_Flash();
   spi2_mutex__release();
+  delay__ms(10);
+}
+
+void Save_BT(uint8_t Treble_t, uint8_t Bass_t) {
+  Flash_Erase(Save_Bass);
+  Flash_Write(Save_Bass, Bass_t);
+  Flash_Write(Save_Treble, Treble_t);
 }
 
 uint8_t Flash_Write_Status() {
   uint8_t temp;
   spi2_mutex__acquire();
   pin_cs(Flash_CS);
-  ssp2__exchange_byte(0x9f);
-  ssp2__exchange_byte(0x00);
+  ssp2__exchange_byte(0x05);
   temp = ssp2__exchange_byte(0x00);
-  ssp2__exchange_byte(0x00);
   pin_ds(Flash_CS);
   spi2_mutex__release();
   return temp;
@@ -100,26 +126,7 @@ uint8_t Flash_Read_ID() {
   return temp;
 }
 
-static void Enable_Flash() {
-  spi2_mutex__acquire();
-  pin_cs(Flash_CS);
-  ssp2__exchange_byte(0x06);
-  pin_ds(Flash_CS);
-  spi2_mutex__release();
-}
-
-static void SDI_send(uint8_t data) {
-  if (xSemaphoreTake(mp3_bus_mutex, portMAX_DELAY)) {
-    pin_ds(XCS);
-    while (!DREQ_Wait()) {
-      vTaskDelay(1);
-    }
-    pin_cs(XDCS);
-    ssp0__exchange_byte(data);
-    pin_ds(XDCS);
-    xSemaphoreGive(mp3_bus_mutex);
-  }
-}
+static void SDI_send(uint8_t data) { ssp0__exchange_byte(data); }
 
 void ssp0_mp3_write_single(uint8_t addr, uint8_t data1, uint8_t data2) {
   if (xSemaphoreTake(mp3_bus_mutex, 1000)) {
@@ -228,10 +235,9 @@ void mp3_SoftReset() {
   };
   ssp0_mp3_write_single(SPI_MODE, 0x48, 0x00);
   ssp0_mp3_write_single(SPI_CLOCKF, 0x60, 0x00);
-  ssp0_mp3_write_single(SPI_AUDATA, 0xBB, 0x81);
+  ssp0_mp3_write_single(SPI_AUDATA, 0xAC, 0x45);
   ssp0_mp3_write_single(SPI_BASS, 0x01, 0x08);
-  Flash_Write(Save_Bass, 0x08);
-  Flash_Write(Save_Treble, 0x01);
+  Save_BT(0x01, 0x08);
   mp3_set_Vol(0x20);
   delay__ms(1);
   pin_cs(XDCS);
@@ -298,7 +304,8 @@ void mp3_init(void) {
   printf("\n");
   ssp0__initialize(1);
   ssp0__pin_init();
-  Enable_Flash();
+  pin_ds(Flash_CS);
+  delay__ms(100);
 
   // mp3_Reset();
   ssp0__exchange_byte(0x00);
@@ -306,8 +313,8 @@ void mp3_init(void) {
   ssp0_mp3_write_single(SPI_MODE, 0x48, 0x00);
   ssp0_mp3_write_single(SPI_CLOCKF, 0x60, 0x00); // Set Clock
   ssp0_mp3_write_single(SPI_AUDATA, 0xBB, 0x81); // Set Frequcy
-  ssp0_mp3_write_single(SPI_BASS, 0x01, 0x08);   // Set Bass and Treble
-  // ssp0_mp3_write_single(SPI_BASS, Flash_Read(Save_Treble), Flash_Read(Save_Bass)); // Set Bass and Treble
+  // ssp0_mp3_write_single(SPI_BASS, 0x01, 0x08);   // Set Bass and Treble
+  ssp0_mp3_write_single(SPI_BASS, Flash_Read(Save_Treble), Flash_Read(Save_Bass)); // Set Bass and Treble
 #if mp3_debugging_mode
   uint8_t data[2];
   printf("MP3 Decoder Reg: \n");
@@ -355,7 +362,7 @@ void mp3_Play_Data_Send(FIL *file_p) {
   bool pressed;
   bool skiped = false;
   printf("\nA new Song Start Playing\n");
-  while (f_read(file_p, &buff, 512, &U_size) == FR_OK) {
+  while (f_read(file_p, &buff, Size_Data_Block, &U_size) == FR_OK) {
     xQueueSend(MP3_Data_Queue, &buff, portMAX_DELAY);
 
     if ((uxQueueMessagesWaiting(Song_Quene) > 0) || (xQueueReceive(Butt_Queues[Butt_DOWN], &pressed, 0))) {
@@ -386,6 +393,9 @@ void mp3_Play_Data_Get(void *p) {
   while (1) {
     if (xQueueReceive(MP3_Data_Queue, &buff, portMAX_DELAY)) {
       mp3_Send_to_Decoder(buff);
+      // for (int i = 0; i < Size_Data_Block; i++) {
+      //   SDI_send(&buff[i]);
+      // }
     }
   }
 }
@@ -396,11 +406,19 @@ This is for MP3 Decoder
 
 void mp3_Send_to_Decoder(uint8_t *buff) {
 
-  for (int i = 0; i < 512; i++) {
-    SDI_send(buff[i]);
+  if (xSemaphoreTake(mp3_bus_mutex, portMAX_DELAY)) {
+    pin_cs(XDCS);
+    for (int i = 0; i < Size_Data_Block; i++) {
+      while (!DREQ_Wait()) {
+        vTaskDelay(2);
+      }
+      SDI_send(buff[i]);
 #if mp3_debug_prt
-    fprintf(stderr, "Decoder send: 0x%02X\n", buff[i]);
+      fprintf(stderr, "Decoder send: 0x%02X\n", buff[i]);
 #endif
+    }
+    pin_ds(XDCS);
+    xSemaphoreGive(mp3_bus_mutex);
   }
 }
 
