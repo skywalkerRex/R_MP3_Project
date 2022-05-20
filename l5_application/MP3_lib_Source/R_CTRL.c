@@ -13,12 +13,29 @@
 #define ctrl_debug_prt 0
 
 static void welcome_page();
+static void Play_Page_Parent();
 static void play_page();
 static void stop_page();
 static void pause_page();
+static void lock_page();
 static void Line2_Play_line();
 static void Line3_Vol_line(int vol);
-static void Play_Page_Parent();
+
+// Menu_Part
+static void Menu_init();
+static void Menu_page();
+static void menu_mod(bool add);
+
+// Song List
+static void Song_list_page();
+static void Song_List_Ctrl();
+
+// Play related Function
+static void Play_Current();
+static void Play_Next();
+static void Play_Next();
+static void Play_STOP();
+static void Play_Page_Ctrl();
 
 static bool pressed = true;
 static int vol_int;
@@ -149,6 +166,15 @@ static void pause_page() {
   LCD_printf("Paused", 6);
 }
 
+static void lock_page() {
+  Play_Page_Parent();
+  setCursor(0, 7);
+  LCD_printf("Locked", 6);
+  Line3_Vol_line(vol_int);
+}
+
+// Menu_Part
+
 typedef struct Menu_Option {
   char name[18];
   int length;
@@ -267,55 +293,6 @@ static void menu_mod(bool add) {
   }
 }
 
-static void Song_list_page() {
-  if (select >= get_total()) {
-    select = 0;
-  } else if (select < 0) {
-    select = get_total() - 1;
-  }
-  clear();
-  SW_to_Select();
-  setCursor(0, 5);
-  LCD_printf("Song List", 9);
-  if (select == 0) {
-    print_ch_at(Select_SYM, 1, 0);
-    for (int i = 1; i <= 3; i++) {
-      setCursor(i, 1);
-      LCD_S_name_printf((char *)song_list__get_name_for_item(select - 1 + i));
-    }
-  } else if (select == get_total() - 1) {
-    print_ch_at(Select_SYM, 3, 0);
-    for (int i = 1; i <= 3; i++) {
-      setCursor(i, 1);
-      LCD_S_name_printf((char *)song_list__get_name_for_item(select - 3 + i));
-    }
-  } else {
-    print_ch_at(Select_SYM, 2, 0);
-    for (int i = 1; i <= 3; i++) {
-      setCursor(i, 1);
-      LCD_S_name_printf((char *)song_list__get_name_for_item(select - 2 + i));
-    }
-  }
-}
-
-static void Play_Current() { mp3_Song_to_Queue((char *)song_list__get_name_for_item(get_index())); }
-
-static void Play_Next() {
-  if (get_play_mode() == Random_Play) {
-    mp3_Song_to_Queue((char *)song_list__get_name_for_item(random_next()));
-  } else {
-    mp3_Song_to_Queue((char *)song_list__get_name_for_item(next_song()));
-  }
-  vTaskDelay(100);
-}
-
-static void Play_Prev() {
-  mp3_Song_to_Queue((char *)song_list__get_name_for_item(prev_song()));
-  vTaskDelay(100);
-}
-
-static void Play_STOP() { set_states(Stop_STATUS); }
-
 static void Menu_Page_Ctrl() {
   if (gpio__get(Butt_list[Butt_UP]) && !selected) {
     // UP
@@ -359,6 +336,39 @@ static void Menu_Page_Ctrl() {
   }
 }
 
+// Song List
+
+static void Song_list_page() {
+  if (select >= get_total()) {
+    select = 0;
+  } else if (select < 0) {
+    select = get_total() - 1;
+  }
+  clear();
+  SW_to_Select();
+  setCursor(0, 5);
+  LCD_printf("Song List", 9);
+  if (select == 0) {
+    print_ch_at(Select_SYM, 1, 0);
+    for (int i = 1; i <= 3; i++) {
+      setCursor(i, 1);
+      LCD_S_name_printf((char *)song_list__get_name_for_item(select - 1 + i));
+    }
+  } else if (select == get_total() - 1) {
+    print_ch_at(Select_SYM, 3, 0);
+    for (int i = 1; i <= 3; i++) {
+      setCursor(i, 1);
+      LCD_S_name_printf((char *)song_list__get_name_for_item(select - 3 + i));
+    }
+  } else {
+    print_ch_at(Select_SYM, 2, 0);
+    for (int i = 1; i <= 3; i++) {
+      setCursor(i, 1);
+      LCD_S_name_printf((char *)song_list__get_name_for_item(select - 2 + i));
+    }
+  }
+}
+
 static void Song_List_Ctrl() {
   if (gpio__get(Butt_list[Butt_UP])) {
     // UP
@@ -384,6 +394,26 @@ static void Song_List_Ctrl() {
     Play_Current();
   }
 }
+
+// Play related Function
+
+static void Play_Current() { mp3_Song_to_Queue((char *)song_list__get_name_for_item(get_index())); }
+
+static void Play_Next() {
+  if (get_play_mode() == Random_Play) {
+    mp3_Song_to_Queue((char *)song_list__get_name_for_item(random_next()));
+  } else {
+    mp3_Song_to_Queue((char *)song_list__get_name_for_item(next_song()));
+  }
+  vTaskDelay(100);
+}
+
+static void Play_Prev() {
+  mp3_Song_to_Queue((char *)song_list__get_name_for_item(prev_song()));
+  vTaskDelay(100);
+}
+
+static void Play_STOP() { set_states(Stop_STATUS); }
 
 static void Play_Page_Ctrl() {
   if (gpio__get(Butt_list[Butt_UP])) {
@@ -490,6 +520,26 @@ void key_board(void *p) {
     if (gpio__get(Butt_list[Butt_LOCK])) {
       // xQueueSend(Butt_Queues[Butt_SONG], &pressed, 0);
       Lock = !Lock;
+      if (!Lock) { // Fresh the page when unlock
+        switch (get_page_mode()) {
+        case Menu_Mode:
+          Menu_page();
+          break;
+
+        case Song_list_Mode:
+          Song_list_page();
+          break;
+
+        case Play_Page_Mode:
+          prev_page = -1;
+          break;
+
+        default:
+          break;
+        }
+      } else {
+        lock_page();
+      }
     }
 
     if (!Lock) {
@@ -534,19 +584,27 @@ void key_board(void *p) {
       default:
         break;
       }
+    } else {
+      if (prev_index != get_index()) {
+        lock_page();
+      }
+      if (prev_vol != vol_int) {
+        prev_vol = vol_int;
+        Line3_Vol_line(vol_int);
+      }
+    }
 
-      // PlayMode Handle
-      if (get_states() == Play_STATUS && (!get_playing())) {
-        if (get_play_mode() == Single_Loop) {
-          Play_Current();
-        } else if (get_play_mode() == List_Loop) {
-          Play_Next();
-        } else if (get_play_mode() == Random_Play) {
-          Play_Next();
-        } else {
-          SW_to_STOP();
-          Play_STOP();
-        }
+    // PlayMode Handle
+    if (get_states() == Play_STATUS && (!get_playing())) {
+      if (get_play_mode() == Single_Loop) {
+        Play_Current();
+      } else if (get_play_mode() == List_Loop) {
+        Play_Next();
+      } else if (get_play_mode() == Random_Play) {
+        Play_Next();
+      } else {
+        SW_to_STOP();
+        Play_STOP();
       }
     }
   }

@@ -300,7 +300,7 @@ void mp3_init(void) {
   ssp0__exchange_byte(0x00);
   mp3_set_Vol(0x20);
   ssp0_mp3_write_single(SPI_MODE, 0x48, 0x00);
-  ssp0_mp3_write_single(SPI_CLOCKF, 0x60, 0x00); // Set Clock
+  ssp0_mp3_write_single(SPI_CLOCKF, 0x20, 0x00); // Set Clock
   ssp0_mp3_write_single(SPI_AUDATA, 0xBB, 0x81); // Set Frequcy
   // ssp0_mp3_write_single(SPI_BASS, 0x01, 0x08);   // Set Bass and Treble
   ssp0_mp3_write_single(SPI_BASS, Flash_Read(Save_Treble), Flash_Read(Save_Bass)); // Set Bass and Treble
