@@ -6,7 +6,7 @@
 #include "board_io.h"
 #include "common_macros.h"
 #include "gpio.h"
-#include "gpio_isr.h"
+//#include "gpio_isr.h"
 #include "lpc_peripherals.h"
 #include "periodic_scheduler.h"
 #include "semphr.h"

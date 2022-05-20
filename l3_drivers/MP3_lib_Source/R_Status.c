@@ -66,5 +66,6 @@ int random_next() {
   prev = index;
   srand(xTaskGetTickCount());
   index = rand() % total;
+  Save_index(index);
   return index;
 }

@@ -4,7 +4,7 @@
 #include "crash.h"
 #include "freertos_interrupt_handlers.h"
 #include "function_types.h"
-#include "gpio_isr.h"
+//#include "gpio_isr.h"
 #include "lpc40xx.h"
 
 extern void gpio_interrupt(void);
