@@ -23,18 +23,6 @@ bool song_list_find_by_name(char *s_name, char *Song);
 typedef uint8_t mp3_data_blocks_s[Size_Data_Block]; // Align data size to the way data is read from the SD card
 QueueHandle_t Butt_Queues[7];
 
-typedef struct machine_states {
-  bool playing;
-  // bool stop;
-  int index;
-  int prev_song;
-  bool in_Menu;
-  bool in_Song_list;
-  int play_mode;
-  int states;
-  int total;
-} machine_states;
-
 // MP3 Decoder Instruction
 #define VS_WRITE_COMMAND 0x02
 #define VS_READ_COMMAND 0x03
@@ -71,23 +59,9 @@ typedef struct machine_states {
 #define SM_ADPCM 0x1000
 #define SM_ADPCM_HP 0x2000
 
-// Play Mode Define
-#define Single_Play 0
-#define Single_Loop 1
-#define List_Loop 2
-#define Random_Play 3
-
-// states Define
-#define Welcome_STATUS 0
-#define Play_STATUS 1
-#define Stop_STATUS 2
-#define Pause_STATUS 3
-
 // Address
 #define Save_Bass 0x00000000
 #define Save_Treble 0x00000001
-
-machine_states current_machine_state;
 
 void mp3_init(void);                     // init all thing that mp3 related
 void mp3_Song_to_Queue(char *s_name);    // Producer for Send the Song Name

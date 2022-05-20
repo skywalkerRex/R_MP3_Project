@@ -5,6 +5,7 @@
 #include <string.h>
 
 // Custom Lib
+#include "R_Status.h"
 #include "board_io.h"
 #include "delay.h"
 #include "ff.h"
@@ -125,8 +126,6 @@ uint8_t Flash_Read_ID() {
   spi2_mutex__release();
   return temp;
 }
-
-static void SDI_send(uint8_t data) { ssp0__exchange_byte(data); }
 
 void ssp0_mp3_write_single(uint8_t addr, uint8_t data1, uint8_t data2) {
   if (xSemaphoreTake(mp3_bus_mutex, 1000)) {
@@ -280,15 +279,7 @@ void Turnoff_light(gpio_s LED) {
 void mp3_init(void) {
   song_list__populate();
   mp3_bus_mutex = xSemaphoreCreateMutex();
-
-  current_machine_state.playing = false;
-  current_machine_state.index = 0;
-  current_machine_state.states = Welcome_STATUS;
-  current_machine_state.in_Menu = false;
-  current_machine_state.in_Song_list = false;
-  current_machine_state.play_mode = List_Loop;
-
-  current_machine_state.total = song_list__get_item_count();
+  machine_state_init();
 
   // Turn off on board LED
   Turnoff_light(board_io__get_led0());
@@ -297,16 +288,14 @@ void mp3_init(void) {
   Turnoff_light(board_io__get_led3());
 
   printf("\nSong list in SD Card root:\n");
-  for (size_t song_number = 0; song_number < current_machine_state.total; song_number++) {
+  for (size_t song_number = 0; song_number < get_total(); song_number++) {
     printf("Song %2d: %s\n", (1 + song_number), song_list__get_name_for_item(song_number));
   }
-
   printf("\n");
   ssp0__initialize(1);
   ssp0__pin_init();
   pin_ds(Flash_CS);
   delay__ms(100);
-
   // mp3_Reset();
   ssp0__exchange_byte(0x00);
   mp3_set_Vol(0x20);
@@ -343,11 +332,11 @@ void mp3_Song_From_Queue(void *p) {
     if (Result == FR_OK) {
       // play_file(file_handle);
       // printf("File %s found\n", Song_Name);
-      current_machine_state.playing = true;
-      current_machine_state.states = Play_STATUS;
+      set_playing(true);
+      set_states(Play_STATUS);
       mp3_Play_Data_Send(&file_handle);
       f_close(&file_handle);
-      current_machine_state.playing = false;
+      set_playing(false);
       printf("\nA Song has end\n");
     } else {
       printf("Unable to open and read file: %s\n", Song_Name);
@@ -370,7 +359,7 @@ void mp3_Play_Data_Send(FIL *file_p) {
       skiped = true;
     }
     if (xQueueReceive(Butt_Queues[Butt_PLAY], &pressed, 0)) {
-      current_machine_state.states = Pause_STATUS;
+      set_states(Pause_STATUS);
       fprintf(stderr, "Song Has Paused\n");
       while (!xQueueReceive(Butt_Queues[Butt_PLAY], &pressed, 100)) {
         if ((uxQueueMessagesWaiting(Song_Quene) > 0) || (xQueueReceive(Butt_Queues[Butt_DOWN], &pressed, 0))) {
@@ -379,7 +368,7 @@ void mp3_Play_Data_Send(FIL *file_p) {
           break;
         }
       }
-      current_machine_state.states = Play_STATUS;
+      set_states(Play_STATUS);
       fprintf(stderr, "Song Has Resumed\n");
     }
     if (skiped || f_eof(file_p)) {
@@ -393,9 +382,6 @@ void mp3_Play_Data_Get(void *p) {
   while (1) {
     if (xQueueReceive(MP3_Data_Queue, &buff, portMAX_DELAY)) {
       mp3_Send_to_Decoder(buff);
-      // for (int i = 0; i < Size_Data_Block; i++) {
-      //   SDI_send(&buff[i]);
-      // }
     }
   }
 }
@@ -410,9 +396,9 @@ void mp3_Send_to_Decoder(uint8_t *buff) {
     pin_cs(XDCS);
     for (int i = 0; i < Size_Data_Block; i++) {
       while (!DREQ_Wait()) {
-        vTaskDelay(2);
+        vTaskDelay(1);
       }
-      SDI_send(buff[i]);
+      ssp0__exchange_byte(buff[i]);
 #if mp3_debug_prt
       fprintf(stderr, "Decoder send: 0x%02X\n", buff[i]);
 #endif

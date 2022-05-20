@@ -2,6 +2,7 @@
 #include "FreeRTOS.h"
 #include "R_LCD.h"
 #include "R_MP3.h"
+#include "R_Status.h"
 #include "l3_drivers/adc.h"
 #include "l3_drivers/gpio.h"
 #include "semphr.h"
@@ -39,14 +40,14 @@ static void Line2_Play_line() {
   print_ch_at(Prev_SYM, 2, 6);
   print_ch_at(LLoop_SYM, 2, 0);
 
-  if (current_machine_state.play_mode == Random_Play) {
+  if (get_play_mode() == Random_Play) {
     SW_to_Rand();
     print_ch_at('X', 2, 1);
   } else {
     SW_to_Loop();
-    if (current_machine_state.play_mode == List_Loop) {
+    if (get_play_mode() == List_Loop) {
       print_ch_at(' ', 2, 1);
-    } else if (current_machine_state.play_mode == Single_Loop) {
+    } else if (get_play_mode() == Single_Loop) {
       print_ch_at('1', 2, 1);
     } else {
       print_ch_at('/', 2, 1);
@@ -79,11 +80,11 @@ static void Line3_Vol_line(int vol) {
   // Song Total Handel
   setCursor(3, 0);
   LCD_printf("Song:", 5);
-  if (current_machine_state.states != Welcome_STATUS) {
-    LCD_num_R_print(current_machine_state.index + 1, 3);
+  if (get_states() != Welcome_STATUS) {
+    LCD_num_R_print(get_index() + 1, 3);
     LCD_print_ch('/');
   }
-  LCD_num_print(current_machine_state.total);
+  LCD_num_print(get_total());
 
   setCursor(3, 13);
   LCD_printf("Vol:", 4);
@@ -101,7 +102,7 @@ static int vol_scan() {
 static void Play_Page_Parent() {
   int count = 0;
   int center = 0;
-  char *name = (char *)song_list__get_name_for_item(current_machine_state.index);
+  char *name = (char *)song_list__get_name_for_item(get_index());
   clear();
   //
   // Line 0 missing
@@ -145,8 +146,22 @@ typedef struct Menu_Option {
   int length;
   int value;
 } Menu_Option;
+
 #define Menu_len 4
 static Menu_Option Options[Menu_len];
+
+static void Menu_init() {
+  strcpy(Options[0].name, "Bass Amp");
+  Options[0].length = 8;
+  strcpy(Options[1].name, "Bass Freq");
+  Options[1].length = 9;
+  strcpy(Options[2].name, "Treble Amp");
+  Options[2].length = 10;
+  strcpy(Options[3].name, "Treble Freq");
+  Options[3].length = 11;
+  // strcpy(Options[4].name, "Reset");
+  // Options[3].length = 5;
+}
 
 static int Menu_page(int select) {
   clear();
@@ -247,10 +262,10 @@ static void menu_mod(int select, bool add) {
 }
 
 static int Song_list_page(int select) {
-  if (select >= current_machine_state.total) {
+  if (select >= get_total()) {
     select = 0;
   } else if (select < 0) {
-    select = current_machine_state.total - 1;
+    select = get_total() - 1;
   }
   clear();
   SW_to_Select();
@@ -262,7 +277,7 @@ static int Song_list_page(int select) {
       setCursor(i, 1);
       LCD_S_name_printf((char *)song_list__get_name_for_item(select - 1 + i));
     }
-  } else if (select == current_machine_state.total - 1) {
+  } else if (select == get_total() - 1) {
     print_ch_at(Select_SYM, 3, 0);
     for (int i = 1; i <= 3; i++) {
       setCursor(i, 1);
@@ -279,47 +294,29 @@ static int Song_list_page(int select) {
   return select;
 }
 
-static void Play_Current() { mp3_Song_to_Queue((char *)song_list__get_name_for_item(current_machine_state.index)); }
+static void Play_Current() { mp3_Song_to_Queue((char *)song_list__get_name_for_item(get_index())); }
 
 static void Play_Next() {
-  current_machine_state.prev_song = current_machine_state.index;
-  if (current_machine_state.play_mode == Random_Play) {
-    srand(xTaskGetTickCount());
-    current_machine_state.index = rand() % current_machine_state.total;
-    mp3_Song_to_Queue((char *)song_list__get_name_for_item(current_machine_state.index));
+  if (get_play_mode() == Random_Play) {
+    mp3_Song_to_Queue((char *)song_list__get_name_for_item(random_next()));
   } else {
-    if (current_machine_state.index < (current_machine_state.total - 1)) {
-      current_machine_state.index++;
-    } else {
-      current_machine_state.index = 0;
-    }
-    mp3_Song_to_Queue((char *)song_list__get_name_for_item(current_machine_state.index));
+    mp3_Song_to_Queue((char *)song_list__get_name_for_item(next_song()));
   }
+  vTaskDelay(100);
 }
 
 static void Play_Prev() {
-  if (current_machine_state.index > 0) {
-    current_machine_state.index--;
-  } else {
-    current_machine_state.index = (current_machine_state.total - 1);
-  }
-  mp3_Song_to_Queue((char *)song_list__get_name_for_item(current_machine_state.index));
+  mp3_Song_to_Queue((char *)song_list__get_name_for_item(prev_song()));
+  vTaskDelay(100);
 }
 
-static void Play_STOP() { current_machine_state.states = Stop_STATUS; }
+static void Play_STOP() { set_states(Stop_STATUS); }
 
 // Public Function
 
 void key_board_init() {
-  strcpy(Options[0].name, "Bass Amp");
-  Options[0].length = 8;
-  strcpy(Options[1].name, "Bass Freq");
-  Options[1].length = 9;
-  strcpy(Options[2].name, "Treble Amp");
-  Options[2].length = 10;
-  strcpy(Options[3].name, "Treble Freq");
-  Options[3].length = 11;
   adc__initialize();
+  Menu_init();
   // adc__enable_burst_mode();
   pin_config_adc();
   for (int i = 0; i < 7; i++) {
@@ -340,7 +337,7 @@ void key_board(void *p) {
     vTaskDelay(200);
     // Volume Check
     vol_int = vol_scan();
-    if (current_machine_state.in_Menu) {
+    if (get_in_Menu()) {
       prev_page = -1;
       if (gpio__get(Butt_list[Butt_UP]) && !selected) {
         // UP
@@ -381,7 +378,7 @@ void key_board(void *p) {
         }
       }
       if (gpio__get(Butt_list[Butt_MEUN])) {
-        current_machine_state.in_Menu = false;
+        SW_to_Play_Page();
         selected = false;
         SW_to_Select();
       }
@@ -389,11 +386,10 @@ void key_board(void *p) {
         // xQueueSend(Butt_Queues[Butt_SONG], &pressed, 0);
         SW_to_Select();
         selected = false;
-        current_machine_state.in_Menu = false;
-        current_machine_state.in_Song_list = true;
-        select = Song_list_page(current_machine_state.index);
+        SW_to_Song_List();
+        select = Song_list_page(get_index());
       }
-    } else if (current_machine_state.in_Song_list) {
+    } else if (get_in_Song_list()) {
       prev_page = -1;
       if (gpio__get(Butt_list[Butt_UP])) {
         // UP
@@ -412,39 +408,38 @@ void key_board(void *p) {
       }*/
       if (gpio__get(Butt_list[Butt_PLAY])) {
         // Confirm
-        current_machine_state.in_Song_list = false;
-        current_machine_state.index = select;
+        SW_to_Play_Page();
+        set_index(select);
         Play_Current();
       }
       if (gpio__get(Butt_list[Butt_MEUN])) {
-        current_machine_state.in_Song_list = false;
-        current_machine_state.in_Menu = true;
+        SW_to_Menu();
         selected = false;
         select = Menu_page(0);
       }
       if (gpio__get(Butt_list[Butt_SONG])) {
-        current_machine_state.in_Song_list = false;
+        SW_to_Play_Page();
       }
     } else {
       if (gpio__get(Butt_list[Butt_UP])) {
-        switch (current_machine_state.play_mode) {
+        switch (get_play_mode()) {
         case 0:
-          current_machine_state.play_mode = 1;
+          set_play_mode(1);
           Line2_Play_line();
           break;
 
         case 1:
-          current_machine_state.play_mode = 2;
+          set_play_mode(2);
           Line2_Play_line();
           break;
 
         case 2:
-          current_machine_state.play_mode = 3;
+          set_play_mode(3);
           Line2_Play_line();
           break;
 
         case 3:
-          current_machine_state.play_mode = 0;
+          set_play_mode(0);
           Line2_Play_line();
           break;
 
@@ -466,7 +461,7 @@ void key_board(void *p) {
         Play_Next();
       }
       if (gpio__get(Butt_list[Butt_PLAY])) {
-        if (current_machine_state.playing) {
+        if (get_playing()) {
           xQueueSend(Butt_Queues[Butt_PLAY], &pressed, 0);
         } else {
           Play_Current();
@@ -474,14 +469,14 @@ void key_board(void *p) {
       }
       if (gpio__get(Butt_list[Butt_MEUN])) {
         // xQueueSend(Butt_Queues[Butt_MEUN], &pressed, 0);
-        current_machine_state.in_Menu = true;
+        SW_to_Menu();
         selected = false;
         select = Menu_page(0);
       }
       if (gpio__get(Butt_list[Butt_SONG])) {
         // xQueueSend(Butt_Queues[Butt_SONG], &pressed, 0);
-        current_machine_state.in_Song_list = true;
-        select = Song_list_page(current_machine_state.index);
+        SW_to_Song_List();
+        select = Song_list_page(get_index());
       }
 
       // Volume Handle 0~4096 for adc 0x0 ~ 0xFE for Vol
@@ -491,11 +486,10 @@ void key_board(void *p) {
       }
 
       // Page Handle
-      if ((!current_machine_state.in_Menu) &&
-          ((prev_page != current_machine_state.states) || (prev_index != current_machine_state.index))) {
-        prev_page = current_machine_state.states;
-        prev_index = current_machine_state.index;
-        switch (current_machine_state.states) {
+      if ((!get_in_Menu()) && ((prev_page != get_states()) || (prev_index != get_index()))) {
+        prev_page = get_states();
+        prev_index = get_index();
+        switch (get_states()) {
         case Welcome_STATUS:
           welcome_page();
           break;
@@ -520,12 +514,12 @@ void key_board(void *p) {
     }
 
     // PlayMode Handle
-    if (current_machine_state.states == Play_STATUS && (!current_machine_state.playing)) {
-      if (current_machine_state.play_mode == Single_Loop) {
+    if (get_states() == Play_STATUS && (!get_playing())) {
+      if (get_play_mode() == Single_Loop) {
         Play_Current();
-      } else if (current_machine_state.play_mode == List_Loop) {
+      } else if (get_play_mode() == List_Loop) {
         Play_Next();
-      } else if (current_machine_state.play_mode == Random_Play) {
+      } else if (get_play_mode() == Random_Play) {
         Play_Next();
       } else {
         SW_to_STOP();
