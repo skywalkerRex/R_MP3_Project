@@ -98,13 +98,22 @@ void Flash_Write(uint32_t addr, uint8_t data) {
 }
 
 void Save_BT(uint8_t Treble_t, uint8_t Bass_t) {
+  uint8_t index_temp;
+  index_temp = Flash_Read(Save_Play_index);
   Flash_Erase(Save_Bass);
   Flash_Write(Save_Bass, Bass_t);
   Flash_Write(Save_Treble, Treble_t);
+  Flash_Write(Save_Play_index, index_temp & 0xFF);
+  Flash_Write(Save_Play_total, get_total());
 }
 
 void Save_index(int s_index) {
-  Flash_Erase(Save_Play_index);
+  uint8_t B_temp, T_temp;
+  B_temp = Flash_Read(Save_Bass);
+  T_temp = Flash_Read(Save_Treble);
+  Flash_Erase(Save_Bass);
+  Flash_Write(Save_Bass, B_temp);
+  Flash_Write(Save_Treble, T_temp);
   Flash_Write(Save_Play_index, s_index & 0xFF);
   Flash_Write(Save_Play_total, get_total());
 }

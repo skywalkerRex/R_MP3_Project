@@ -62,8 +62,8 @@ QueueHandle_t Butt_Queues[7];
 // Address
 #define Save_Bass 0x00000000
 #define Save_Treble 0x00000001
-#define Save_Play_index 0x00200000
-#define Save_Play_total 0x00200001
+#define Save_Play_index 0x00000003
+#define Save_Play_total 0x00000004
 
 void mp3_init(void);                     // init all thing that mp3 related
 void mp3_Song_to_Queue(char *s_name);    // Producer for Send the Song Name
