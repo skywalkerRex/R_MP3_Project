@@ -12,8 +12,8 @@
 #define Butt_LEFT 2
 #define Butt_RIGHT 3
 #define Butt_PLAY 4
-#define Butt_MEUN 5
-#define Butt_SONG 6
+#define Butt_MODE 5
+#define Butt_LOCK 6
 
 QueueHandle_t Butt_Queues[7];
 

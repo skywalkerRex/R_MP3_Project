@@ -20,6 +20,14 @@ static void Line2_Play_line();
 static void Line3_Vol_line(int vol);
 static void Play_Page_Parent();
 
+static bool pressed = true;
+static int vol_int;
+static int prev_vol = -1;
+static int prev_page = -1;
+static int prev_index = -1;
+static int select = 0;
+static bool selected = false;
+
 static gpio_s Butt_list[7] = {{1, 29}, {0, 9}, {1, 23}, {0, 25}, {1, 30}, {0, 7}, {1, 14}};
 
 static void butt_construct(gpio_s butt) {
@@ -163,7 +171,7 @@ static void Menu_init() {
   // Options[3].length = 5;
 }
 
-static int Menu_page(int select) {
+static void Menu_page() {
   clear();
   setCursor(0, 8);
   LCD_printf("Menu", 4);
@@ -205,11 +213,9 @@ static int Menu_page(int select) {
       LCD_num_R_print(Options[select - 2 + i].value, 3);
     }
   }
-
-  return select;
 }
 
-static void menu_mod(int select, bool add) {
+static void menu_mod(bool add) {
   uint8_t Bass, Treble, Temp;
   if (select >= 0 && select < 4) {
     ssp0_mp3_read_single(SPI_BASS, &Treble, &Bass);
@@ -261,7 +267,7 @@ static void menu_mod(int select, bool add) {
   }
 }
 
-static int Song_list_page(int select) {
+static void Song_list_page() {
   if (select >= get_total()) {
     select = 0;
   } else if (select < 0) {
@@ -290,8 +296,6 @@ static int Song_list_page(int select) {
       LCD_S_name_printf((char *)song_list__get_name_for_item(select - 2 + i));
     }
   }
-
-  return select;
 }
 
 static void Play_Current() { mp3_Song_to_Queue((char *)song_list__get_name_for_item(get_index())); }
@@ -312,6 +316,157 @@ static void Play_Prev() {
 
 static void Play_STOP() { set_states(Stop_STATUS); }
 
+static void Menu_Page_Ctrl() {
+  if (gpio__get(Butt_list[Butt_UP]) && !selected) {
+    // UP
+    --select;
+    Menu_page();
+#if ctrl_debug_prt
+    fprintf(stderr, "Select: %i \n", select);
+#endif
+  }
+  if (gpio__get(Butt_list[Butt_DOWN]) && !selected) {
+    // DOWN
+    ++select;
+    Menu_page();
+#if ctrl_debug_prt
+    fprintf(stderr, "Select: %i \n", select);
+#endif
+  }
+  if (gpio__get(Butt_list[Butt_LEFT]) && selected) {
+    // LEFT
+    menu_mod(false);
+#if ctrl_debug_prt
+    fprintf(stderr, "Select: %i \n", select);
+#endif
+  }
+  if (gpio__get(Butt_list[Butt_RIGHT]) && selected) {
+    // RIGHT
+    menu_mod(true);
+#if ctrl_debug_prt
+    fprintf(stderr, "Select: %i \n", select);
+#endif
+  }
+  if (gpio__get(Butt_list[Butt_PLAY])) {
+    // Confirm
+    if (selected) {
+      SW_to_Select();
+      selected = false;
+    } else {
+      SW_to_Selected();
+      selected = true;
+    }
+  }
+}
+
+static void Song_List_Ctrl() {
+  if (gpio__get(Butt_list[Butt_UP])) {
+    // UP
+    --select;
+    Song_list_page();
+  }
+  if (gpio__get(Butt_list[Butt_DOWN])) {
+    // DOWN
+    ++select;
+    Song_list_page();
+  }
+  /* not used
+  if (gpio__get(Butt_list[Butt_LEFT])) {
+    // LEFT
+  }
+  if (gpio__get(Butt_list[Butt_RIGHT])) {
+    // RIGHT
+  }*/
+  if (gpio__get(Butt_list[Butt_PLAY])) {
+    // Confirm
+    set_page_mode(Play_Page_Mode);
+    set_index(select);
+    Play_Current();
+  }
+}
+
+static void Play_Page_Ctrl() {
+  if (gpio__get(Butt_list[Butt_UP])) {
+    switch (get_play_mode()) {
+    case 0:
+      set_play_mode(1);
+      Line2_Play_line();
+      break;
+
+    case 1:
+      set_play_mode(2);
+      Line2_Play_line();
+      break;
+
+    case 2:
+      set_play_mode(3);
+      Line2_Play_line();
+      break;
+
+    case 3:
+      set_play_mode(0);
+      Line2_Play_line();
+      break;
+
+    default:
+      break;
+    }
+    // xQueueSend(Butt_Queues[Butt_UP], &pressed, 0);
+  }
+  if (gpio__get(Butt_list[Butt_DOWN])) {
+    Play_STOP();
+    xQueueSend(Butt_Queues[Butt_DOWN], &pressed, 0);
+  }
+  if (gpio__get(Butt_list[Butt_LEFT])) {
+    // xQueueSend(Butt_Queues[Butt_LEFT], &pressed, 0);
+    Play_Prev();
+  }
+  if (gpio__get(Butt_list[Butt_RIGHT])) {
+    // xQueueSend(Butt_Queues[Butt_RIGHT], &pressed, 0);
+    Play_Next();
+  }
+  if (gpio__get(Butt_list[Butt_PLAY])) {
+    if (get_playing()) {
+      xQueueSend(Butt_Queues[Butt_PLAY], &pressed, 0);
+    } else {
+      Play_Current();
+    }
+  }
+
+  // Volume Handle 0~4096 for adc 0x0 ~ 0xFE for Vol
+  if (prev_vol != vol_int) {
+    prev_vol = vol_int;
+    Line3_Vol_line(vol_int);
+  }
+
+  // Page Page Handle
+  if ((prev_page != get_states()) || (prev_index != get_index())) {
+    prev_page = get_states();
+    prev_index = get_index();
+    switch (get_states()) {
+    case Welcome_STATUS:
+      welcome_page();
+      break;
+
+    case Play_STATUS:
+      play_page();
+      break;
+
+    case Pause_STATUS:
+      pause_page();
+      break;
+
+    case Stop_STATUS:
+      stop_page();
+      break;
+
+    default:
+      break;
+    }
+    Line3_Vol_line(vol_int);
+  }
+}
+
 // Public Function
 
 void key_board_init() {
@@ -326,204 +481,72 @@ void key_board_init() {
 }
 
 void key_board(void *p) {
-  bool pressed = true;
-  int vol_int;
-  int prev_vol = -1;
-  int prev_page = -1;
-  int prev_index = -1;
-  int select = 0;
-  bool selected = false;
+  bool Lock = false;
   while (1) {
-    vTaskDelay(200);
+    vTaskDelay(150);
     // Volume Check
     vol_int = vol_scan();
-    if (get_in_Menu()) {
-      prev_page = -1;
-      if (gpio__get(Butt_list[Butt_UP]) && !selected) {
-        // UP
-        select = Menu_page(--select);
-#if ctrl_debug_prt
-        fprintf(stderr, "Select: %i \n", select);
-#endif
-      }
-      if (gpio__get(Butt_list[Butt_DOWN]) && !selected) {
-        // DOWN
-        select = Menu_page(++select);
-#if ctrl_debug_prt
-        fprintf(stderr, "Select: %i \n", select);
-#endif
-      }
-      if (gpio__get(Butt_list[Butt_LEFT]) && selected) {
-        // LEFT
-        menu_mod(select, false);
-#if ctrl_debug_prt
-        fprintf(stderr, "Select: %i \n", select);
-#endif
-      }
-      if (gpio__get(Butt_list[Butt_RIGHT]) && selected) {
-        // RIGHT
-        menu_mod(select, true);
-#if ctrl_debug_prt
-        fprintf(stderr, "Select: %i \n", select);
-#endif
-      }
-      if (gpio__get(Butt_list[Butt_PLAY])) {
-        // Confirm
-        if (selected) {
-          SW_to_Select();
-          selected = false;
-        } else {
-          SW_to_Selected();
-          selected = true;
-        }
-      }
-      if (gpio__get(Butt_list[Butt_MEUN])) {
-        SW_to_Play_Page();
-        selected = false;
-        SW_to_Select();
-      }
-      if (gpio__get(Butt_list[Butt_SONG])) {
-        // xQueueSend(Butt_Queues[Butt_SONG], &pressed, 0);
-        SW_to_Select();
-        selected = false;
-        SW_to_Song_List();
-        select = Song_list_page(get_index());
-      }
-    } else if (get_in_Song_list()) {
-      prev_page = -1;
-      if (gpio__get(Butt_list[Butt_UP])) {
-        // UP
-        select = Song_list_page(--select);
-      }
-      if (gpio__get(Butt_list[Butt_DOWN])) {
-        // DOWN
-        select = Song_list_page(++select);
-      }
-      /* not used
-      if (gpio__get(Butt_list[Butt_LEFT])) {
-        // LEFT
-      }
-      if (gpio__get(Butt_list[Butt_RIGHT])) {
-        // RIGHT
-      }*/
-      if (gpio__get(Butt_list[Butt_PLAY])) {
-        // Confirm
-        SW_to_Play_Page();
-        set_index(select);
-        Play_Current();
-      }
-      if (gpio__get(Butt_list[Butt_MEUN])) {
-        SW_to_Menu();
-        selected = false;
-        select = Menu_page(0);
-      }
-      if (gpio__get(Butt_list[Butt_SONG])) {
-        SW_to_Play_Page();
-      }
-    } else {
-      if (gpio__get(Butt_list[Butt_UP])) {
-        switch (get_play_mode()) {
-        case 0:
-          set_play_mode(1);
-          Line2_Play_line();
-          break;
 
-        case 1:
-          set_play_mode(2);
-          Line2_Play_line();
-          break;
-
-        case 2:
-          set_play_mode(3);
-          Line2_Play_line();
-          break;
-
-        case 3:
-          set_play_mode(0);
-          Line2_Play_line();
-          break;
-
-        default:
-          break;
-        }
-        // xQueueSend(Butt_Queues[Butt_UP], &pressed, 0);
-      }
-      if (gpio__get(Butt_list[Butt_DOWN])) {
-        Play_STOP();
-        xQueueSend(Butt_Queues[Butt_DOWN], &pressed, 0);
-      }
-      if (gpio__get(Butt_list[Butt_LEFT])) {
-        // xQueueSend(Butt_Queues[Butt_LEFT], &pressed, 0);
-        Play_Prev();
-      }
-      if (gpio__get(Butt_list[Butt_RIGHT])) {
-        // xQueueSend(Butt_Queues[Butt_RIGHT], &pressed, 0);
-        Play_Next();
-      }
-      if (gpio__get(Butt_list[Butt_PLAY])) {
-        if (get_playing()) {
-          xQueueSend(Butt_Queues[Butt_PLAY], &pressed, 0);
-        } else {
-          Play_Current();
-        }
-      }
-      if (gpio__get(Butt_list[Butt_MEUN])) {
-        // xQueueSend(Butt_Queues[Butt_MEUN], &pressed, 0);
-        SW_to_Menu();
-        selected = false;
-        select = Menu_page(0);
-      }
-      if (gpio__get(Butt_list[Butt_SONG])) {
-        // xQueueSend(Butt_Queues[Butt_SONG], &pressed, 0);
-        SW_to_Song_List();
-        select = Song_list_page(get_index());
-      }
-
-      // Volume Handle 0~4096 for adc 0x0 ~ 0xFE for Vol
-      if (prev_vol != vol_int) {
-        prev_vol = vol_int;
-        Line3_Vol_line(vol_int);
-      }
-
-      // Page Handle
-      if ((!get_in_Menu()) && ((prev_page != get_states()) || (prev_index != get_index()))) {
-        prev_page = get_states();
-        prev_index = get_index();
-        switch (get_states()) {
-        case Welcome_STATUS:
-          welcome_page();
-          break;
-
-        case Play_STATUS:
-          play_page();
-          break;
-
-        case Pause_STATUS:
-          pause_page();
-          break;
-
-        case Stop_STATUS:
-          stop_page();
-          break;
-
-        default:
-          break;
-        }
-        Line3_Vol_line(vol_int);
-      }
+    if (gpio__get(Butt_list[Butt_LOCK])) {
+      // xQueueSend(Butt_Queues[Butt_SONG], &pressed, 0);
+      Lock = !Lock;
     }
 
-    // PlayMode Handle
-    if (get_states() == Play_STATUS && (!get_playing())) {
-      if (get_play_mode() == Single_Loop) {
-        Play_Current();
-      } else if (get_play_mode() == List_Loop) {
-        Play_Next();
-      } else if (get_play_mode() == Random_Play) {
-        Play_Next();
-      } else {
-        SW_to_STOP();
-        Play_STOP();
+    if (!Lock) {
+      if (gpio__get(Butt_list[Butt_MODE])) {
+        // xQueueSend(Butt_Queues[Butt_MEUN], &pressed, 0);
+        switch (get_page_mode()) {
+        case Menu_Mode:
+          prev_page = -1;
+          set_page_mode(Play_Page_Mode);
+          break;
+
+        case Song_list_Mode:
+          set_page_mode(Menu_Mode);
+          select = 0;
+          Menu_page();
+          break;
+
+        case Play_Page_Mode:
+          set_page_mode(Song_list_Mode);
+          select = get_index();
+          Song_list_page();
+          break;
+
+        default:
+          break;
+        }
+      }
+
+      switch (get_page_mode()) {
+      case Menu_Mode:
+        // printf("in_Menu\n");
+        Menu_Page_Ctrl();
+        break;
+      case Song_list_Mode:
+        // printf("in_list\n");
+        Song_List_Ctrl();
+        break;
+      case Play_Page_Mode:
+        // printf("in_Play\n");
+        Play_Page_Ctrl();
+        break;
+      default:
+        break;
+      }
+
+      // PlayMode Handle
+      if (get_states() == Play_STATUS && (!get_playing())) {
+        if (get_play_mode() == Single_Loop) {
+          Play_Current();
+        } else if (get_play_mode() == List_Loop) {
+          Play_Next();
+        } else if (get_play_mode() == Random_Play) {
+          Play_Next();
+        } else {
+          SW_to_STOP();
+          Play_STOP();
+        }
       }
     }
   }
