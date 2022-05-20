@@ -103,6 +103,20 @@ void Save_BT(uint8_t Treble_t, uint8_t Bass_t) {
   Flash_Write(Save_Treble, Treble_t);
 }
 
+void Save_index(int s_index) {
+  Flash_Erase(Save_Play_index);
+  Flash_Write(Save_Play_index, s_index & 0xFF);
+  Flash_Write(Save_Play_total, get_total());
+}
+
+int Read_index() {
+  if (Flash_Read(Save_Play_total) != get_total()) {
+    return 0;
+  } else {
+    return Flash_Read(Save_Play_index);
+  }
+}
+
 uint8_t Flash_Write_Status() {
   uint8_t temp;
   spi2_mutex__acquire();
@@ -280,7 +294,7 @@ void mp3_init(void) {
   song_list__populate();
   mp3_bus_mutex = xSemaphoreCreateMutex();
   machine_state_init();
-
+  set_index(Read_index());
   // Turn off on board LED
   Turnoff_light(board_io__get_led0());
   Turnoff_light(board_io__get_led1());

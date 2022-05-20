@@ -287,7 +287,7 @@ void LCD_num_R_print(int num, int fixed_space) {
 
 void LCD_S_name_printf(char *s_name) {
   int count = 0;
-  for (int i = 0; i < 20; i++) {
+  for (int i = 0; i < 18; i++) {
     if (s_name[i] == '.') {
       break;
     }

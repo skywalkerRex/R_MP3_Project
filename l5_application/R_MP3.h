@@ -62,6 +62,8 @@ QueueHandle_t Butt_Queues[7];
 // Address
 #define Save_Bass 0x00000000
 #define Save_Treble 0x00000001
+#define Save_Play_index 0x00200000
+#define Save_Play_total 0x00200001
 
 void mp3_init(void);                     // init all thing that mp3 related
 void mp3_Song_to_Queue(char *s_name);    // Producer for Send the Song Name
@@ -84,3 +86,5 @@ void Flash_Erase(uint32_t addr);
 uint8_t Flash_Read_ID();
 uint8_t Flash_Write_Status();
 void Save_BT(uint8_t Treble_t, uint8_t Bass_t);
+void Save_index(int s_index);
+int Read_index();
